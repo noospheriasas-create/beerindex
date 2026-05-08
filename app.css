@@ -245,7 +245,7 @@ a { color: inherit; }
   font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
   text-transform: uppercase; color: var(--ink-3);
 }
-.onb__foot a { color: var(--terra); border-bottom: 1px dashed; }
+.onb__foot a, .onb__foot button { color: var(--terra); border-bottom: 1px dashed; font: inherit; background: none; padding: 0; }
 
 /* =========================================================
    CARTE

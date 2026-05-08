@@ -41,7 +41,7 @@
       </div>
       <div class="onb__foot">
         <span>v0.1 · fait à Annecy</span>
-        <a href="#" data-onb-skip>plus tard →</a>
+        <button type="button" data-onb-skip>plus tard →</button>
       </div>
     </section>
 
@@ -52,8 +52,8 @@
         <span class="brand__name"><b>Annecy</b> Beer Index</span>
       </div>
       <div class="idx-chip">
-        <span class="num" id="idxChipPrice">€6,84</span>
-        <span class="pct up" id="idxChipDelta">▲ 0,12</span>
+        <span class="num" id="idxChipPrice">—</span>
+        <span class="pct" id="idxChipDelta">moyenne</span>
       </div>
     </header>
 
@@ -77,15 +77,15 @@
     <!-- LISTE -->
     <section class="screen list" data-tab="liste" data-screen-label="03 Liste" hidden>
       <div class="list-head">
-        <div class="eyebrow">— vendredi 8 mai · annecy</div>
+        <div class="eyebrow" id="listDate">—</div>
         <h1 class="h-display">La <em>liste</em>.</h1>
         <p class="list-head__sub">Tous les bars classés du moins cher au plus chacal. <b id="listMode">Pinte alcoolisée</b>.</p>
       </div>
       <div class="list-stats">
-        <span><b id="listAvg">€6,84</b> moyenne</span>
-        <span><b id="listMin">€5,50</b> min</span>
-        <span><b id="listMax">€9,00</b> max</span>
-        <span><b id="listCount">10</b> bars</span>
+        <span><b id="listAvg">—</b> moyenne</span>
+        <span><b id="listMin">—</b> min</span>
+        <span><b id="listMax">—</b> max</span>
+        <span><b id="listCount">0</b> bars</span>
       </div>
       <div class="list-toggle">
         <button class="chip is-active" data-sort="price">par prix ↓</button>
@@ -136,7 +136,7 @@
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg>
         </button>
       </div>
-      <p class="profile-foot">v0.1 · fait à Annecy par 3 potes ·<br/>pas d'analytique, pas de cookies, juste un fichier <a href="#">JSON</a> et <span style="color: var(--terra)">de l'amour</span>.</p>
+      <p class="profile-foot">v0.1 · fait à Annecy par 3 potes ·<br/>pas d'analytique, pas de cookies, juste une base <span style="color: var(--terra)">Postgres</span> et <span style="color: var(--terra)">de l'amour</span>.</p>
     </section>
 
     <!-- LANDING -->
@@ -151,7 +151,7 @@
         </button>
       </div>
       <div class="landing__main">
-        <span class="landing__eyebrow">/ sans alcool · 74</span>
+        <span class="landing__eyebrow" id="landingEyebrow">/ sans alcool</span>
         <h1 class="h-display">Les meilleures <em>0,0%</em> d'Annecy.</h1>
         <p class="landing__sub">(Et accessoirement, on sait aussi où ta vraie pinte coûte 5 €.)</p>
         <div class="landing__top3-head">
@@ -184,7 +184,7 @@
       <div class="mr-body">
         <h2>Combien tu l'as <em>payée</em> ?</h2>
         <p class="mr-at">au <b id="mrBarName">bar</b></p>
-        <a href="#" class="wrong-bar" id="wrongBar">Pas le bon bar ? Ajouter →</a>
+        <button type="button" class="wrong-bar" id="wrongBar">Pas le bon bar ? Ajouter →</button>
         <div class="new-bar-form" id="newBarForm" hidden>
           <input id="newBarName" placeholder="nom du bar" />
           <input id="newBarAddr" placeholder="adresse / quartier" />

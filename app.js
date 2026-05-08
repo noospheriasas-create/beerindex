@@ -7,13 +7,13 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let BARS = [];
 
-const LS = { introDone:"abi:introDone", mode:"abi:mode", reports:"abi:reports", favs:"abi:favs", nick:"abi:nick", device:"abi:device" };
+const LS = { introDone:"abi:introDone", mode:"abi:mode", favs:"abi:favs", nick:"abi:nick", device:"abi:device" };
 const state = {
   tab: "carte",
   mode: localStorage.getItem(LS.mode) || "alc",
   hhFilter: false,
   selectedBarId: null,
-  reports: +(localStorage.getItem(LS.reports) || 0),
+  reports: 0,
   favs: JSON.parse(localStorage.getItem(LS.favs) || "[]"),
   nick: localStorage.getItem(LS.nick) || "",
   device: localStorage.getItem(LS.device) || `abi-${Math.random().toString(36).slice(2,8)}`,
@@ -58,6 +58,8 @@ const toast = (msg, ms=2200) => {
   clearTimeout(toast._tm); toast._tm = setTimeout(() => t.hidden = true, ms);
 };
 
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+
 function mapBarFromDb(b) {
   return {
     id: b.id, name: b.name, address: b.address, lat: b.lat, lng: b.lng,
@@ -70,18 +72,34 @@ function mapBarFromDb(b) {
 
 async function fetchBars() {
   const { data, error } = await sb.from('bars').select('*').order('id');
-  if (error) { console.error('Supabase fetch error:', error); return; }
+  if (error) { console.error('Supabase fetch error:', error); toast("Connexion à la base perdue."); return false; }
   BARS = data.map(mapBarFromDb);
+  return true;
+}
+
+async function fetchMyReportCount() {
+  const { count, error } = await sb.from('reports')
+    .select('*', { count: 'exact', head: true })
+    .eq('device_id', state.device);
+  if (!error) state.reports = count || 0;
 }
 
 function computeIndex() {
-  const list = state.mode === "nonalc" ? BARS.filter(b => b.hasNonAlc).map(b => b.nonAlcPrice) : BARS.map(b => b.pintNormal);
-  if (!list.length) return { today: 0, delta: 0 };
-  const avg = list.reduce((a,b)=>a+b,0) / list.length;
-  return { today: avg, delta: 0 };
+  const list = state.mode === "nonalc"
+    ? BARS.filter(b => b.hasNonAlc).map(b => b.nonAlcPrice)
+    : BARS.map(b => b.pintNormal);
+  if (!list.length) return { today: 0 };
+  return { today: list.reduce((a,b)=>a+b,0) / list.length };
 }
 
-// ============== TABS ==============
+function todayLabel() {
+  const d = new Date();
+  const days = ["dimanche","lundi","mardi","mercredi","jeudi","vendredi","samedi"];
+  const months = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+  return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]} · annecy`;
+}
+
+// ============== TABS / NAV ==============
 function setTab(name) {
   state.tab = name;
   $$(".screen[data-tab]").forEach(s => s.hidden = s.dataset.tab !== name);
@@ -90,18 +108,24 @@ function setTab(name) {
   if (name !== "admin") $("#admin").hidden = true;
   if (name === "carte") setTimeout(() => map && map.invalidateSize(), 60);
   if (name === "liste") renderList();
+  if (name === "moi") renderProfile();
   if (["carte","liste","moi"].includes(name)) history.replaceState(null,"",`#${name}`);
 }
+
 document.addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-go-tab]");
-  if (!btn) return;
-  $("#confirm").hidden = true;
-  $("#admGate").hidden = true;
-  const t = btn.dataset.goTab;
-  if (t === "landing") { $("#landing").hidden = false; return; }
-  if (t === "admin") { openAdmin(); return; }
-  $("#landing").hidden = true; $("#admin").hidden = true;
-  setTab(t);
+  const goTab = e.target.closest("[data-go-tab]");
+  if (goTab) {
+    $("#confirm").hidden = true;
+    $("#admGate").hidden = true;
+    const t = goTab.dataset.goTab;
+    if (t === "landing") { $("#landing").hidden = false; return; }
+    if (t === "admin")   { openAdmin(); return; }
+    $("#landing").hidden = true; $("#admin").hidden = true;
+    setTab(t);
+    return;
+  }
+  const barRow = e.target.closest("[data-bar-id]");
+  if (barRow) { openSheet(+barRow.dataset.barId); return; }
 });
 
 // ============== ONBOARDING ==============
@@ -118,8 +142,8 @@ function closeOnb() { $("#onb").hidden = true; localStorage.setItem(LS.introDone
 // ============== TOP CHIP ==============
 function renderTopChip() {
   const i = computeIndex();
-  $("#idxChipPrice").textContent = eur(i.today);
-  $("#idxChipDelta").textContent = "moyenne";
+  $("#idxChipPrice").textContent = i.today ? eur(i.today) : "—";
+  $("#idxChipDelta").textContent = state.mode === "nonalc" ? "0,0 %" : "moyenne";
   $("#idxChipDelta").className = "pct";
 }
 
@@ -164,6 +188,14 @@ $("#hhChip").addEventListener("click", () => { state.hhFilter = !state.hhFilter;
 $("#mapFab").addEventListener("click", () => openReport(null));
 
 // ============== BAR SHEET ==============
+function timeAgo(dateStr) {
+  if (!dateStr) return "récemment";
+  const days = Math.max(0, Math.round((Date.now() - new Date(dateStr).getTime()) / 86400000));
+  if (days === 0) return "aujourd'hui";
+  if (days === 1) return "hier";
+  return `il y a ${days} jours`;
+}
+
 function openSheet(id) {
   const b = BARS.find(x => x.id === id);
   if (!b) return;
@@ -172,8 +204,6 @@ function openSheet(id) {
   const t = tier(price);
   const hh = minsHH(b);
   const isFav = state.favs.includes(id);
-  const days = Math.max(0, Math.round((Date.now() - new Date(b.lastUpdate).getTime()) / 86400000));
-  const ago = days === 0 ? "aujourd'hui" : days === 1 ? "hier" : `il y a ${days} jours`;
 
   let hhCard = "";
   if (!b.pintHH) {
@@ -187,21 +217,27 @@ function openSheet(id) {
   $("#sheetBody").innerHTML = `
     <div class="bar-head">
       <div class="bar-head__row">
-        <div style="flex:1;min-width:0"><h2>${b.name}</h2><div class="bar-head__addr">${b.address} · ~${(Math.random()*0.6+0.2).toFixed(1)} km</div></div>
-        <button class="bar-fav ${isFav?"is-on":""}" id="favBtn"><svg viewBox="0 0 24 24" width="18" height="18" fill="${isFav?"currentColor":"none"}" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6c-2.5 4.5-9.5 9-9.5 9Z"/></svg></button>
+        <div style="flex:1;min-width:0">
+          <h2>${escapeHtml(b.name)}</h2>
+          <div class="bar-head__addr">${escapeHtml(b.address)}</div>
+        </div>
+        <button class="bar-fav ${isFav?"is-on":""}" id="favBtn" aria-label="Favori"><svg viewBox="0 0 24 24" width="18" height="18" fill="${isFav?"currentColor":"none"}" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6c-2.5 4.5-9.5 9-9.5 9Z"/></svg></button>
       </div>
     </div>
     <div class="price-row">
-      <div><div class="price-row__label">${state.mode === "nonalc" ? "Pinte 0,0 %" : "Pinte (50 cl)"}</div><div class="price-row__val"><span class="cur">€</span>${fmt(price)}</div></div>
+      <div>
+        <div class="price-row__label">${state.mode === "nonalc" ? "Pinte 0,0 %" : "Pinte (50 cl)"}</div>
+        <div class="price-row__val"><span class="cur">€</span>${fmt(price)}</div>
+      </div>
       <span class="price-row__tier t-${t.k}">${t.label}</span>
     </div>
-    <div class="price-update">Mis à jour ${ago} · par un contributeur anonyme</div>
+    <div class="price-update">Mis à jour ${timeAgo(b.lastUpdate)} · par un contributeur anonyme</div>
     ${hhCard}
     <div class="bar-actions">
       <button class="btn btn--ghost" id="dirBtn">↗ Itinéraire</button>
       <button class="btn btn--terra" id="reportFromBar">+ Signaler</button>
     </div>
-    <div class="bar-foot">// les 5 derniers signalements sont moyennés</div>
+    <div class="bar-foot">// les 5 derniers signalements approuvés sont moyennés</div>
   `;
   $("#sheetWrap").hidden = false;
   $("#favBtn").addEventListener("click", () => {
@@ -210,7 +246,10 @@ function openSheet(id) {
     localStorage.setItem(LS.favs, JSON.stringify(state.favs));
     openSheet(id); renderProfile();
   });
-  $("#dirBtn").addEventListener("click", () => toast("Ouvre l'app Plans en vrai."));
+  $("#dirBtn").addEventListener("click", () => {
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${b.lat},${b.lng}`;
+    window.open(url, "_blank", "noopener");
+  });
   $("#reportFromBar").addEventListener("click", () => { closeSheet(); openReport(id); });
 }
 function closeSheet() { $("#sheetWrap").hidden = true; }
@@ -218,26 +257,30 @@ $$("[data-close-sheet]").forEach(b => b.addEventListener("click", closeSheet));
 
 // ============== LISTE ==============
 function renderList() {
+  $("#listDate").textContent = todayLabel();
   const idx = computeIndex();
   const bars = visibleBars();
   const prices = bars.map(b => priceFor(b));
-  $("#listAvg").textContent = eur(idx.today);
+  $("#listAvg").textContent = idx.today ? eur(idx.today) : "—";
   $("#listMin").textContent = prices.length ? eur(Math.min(...prices)) : "—";
   $("#listMax").textContent = prices.length ? eur(Math.max(...prices)) : "—";
   $("#listCount").textContent = bars.length;
   $("#listMode").textContent = state.mode === "nonalc" ? "Pinte sans alcool" : "Pinte alcoolisée";
 
-  let sorted = [...bars];
+  const sorted = [...bars];
   if (state.sort === "price") sorted.sort((a,b) => priceFor(a) - priceFor(b));
-  if (state.sort === "name") sorted.sort((a,b) => a.name.localeCompare(b.name));
-  if (state.sort === "hh") sorted.sort((a,b) => (b.pintHH ? 1 : 0) - (a.pintHH ? 1 : 0) || priceFor(a)-priceFor(b));
+  if (state.sort === "name")  sorted.sort((a,b) => a.name.localeCompare(b.name));
+  if (state.sort === "hh")    sorted.sort((a,b) => (b.pintHH ? 1 : 0) - (a.pintHH ? 1 : 0) || priceFor(a)-priceFor(b));
 
   $("#listRows").innerHTML = sorted.map((b,i) => {
     const p = priceFor(b); const t = tier(p);
     const hh = b.pintHH ? `<span class="hh">HH ${eur(b.pintHH)}</span>` : "";
     return `<button class="list-row" data-bar-id="${b.id}">
       <span class="list-row__rank">${String(i+1).padStart(2,"0")}</span>
-      <div class="list-row__main"><div class="list-row__name">${b.name}</div><div class="list-row__meta"><span>${b.address}</span>${hh?`<span>${hh}</span>`:""}</div></div>
+      <div class="list-row__main">
+        <div class="list-row__name">${escapeHtml(b.name)}</div>
+        <div class="list-row__meta"><span>${escapeHtml(b.address)}</span>${hh?`<span>${hh}</span>`:""}</div>
+      </div>
       <span class="list-row__price t-${t.k}">${eur(p)}</span>
     </button>`;
   }).join("");
@@ -247,11 +290,6 @@ $$("[data-sort]").forEach(b => b.addEventListener("click", () => {
   $$("[data-sort]").forEach(x => x.classList.toggle("is-active", x === b));
   renderList();
 }));
-document.addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-bar-id]");
-  if (!btn) return;
-  openSheet(+btn.dataset.barId);
-});
 
 // ============== REPORT ==============
 const QUOTES = {
@@ -267,13 +305,15 @@ function pickQuote(p) {
   return QUOTES.mid[Math.floor(Math.random()*QUOTES.mid.length)];
 }
 function openReport(id) {
-  const b = id ? BARS.find(x => x.id === id) : BARS[0];
+  const b = id ? BARS.find(x => x.id === id) : null;
   state.selectedBarId = b?.id || null;
-  $("#mrBarName").textContent = b ? b.name : "un bar d'Annecy";
+  $("#mrBarName").textContent = b ? b.name : "(choisis un bar)";
   $("#priceInput").value = "";
-  $("#hhField").checked = isHHActive(b || {});
+  $("#hhField").checked = b ? isHHActive(b) : false;
   $$("input[name=fmt]").forEach(r => r.checked = r.value === "50");
   $("#newBarForm").hidden = true;
+  $("#newBarName").value = "";
+  $("#newBarAddr").value = "";
   $("#mrQuote").textContent = pickQuote(null);
   $("#reportModal").hidden = false;
   requestAnimationFrame(() => $("#reportModal").classList.add("is-open"));
@@ -286,40 +326,76 @@ function closeReport() {
 $$("[data-close-report]").forEach(b => b.addEventListener("click", closeReport));
 $("#priceInput").addEventListener("input", (e) => { $("#mrQuote").textContent = pickQuote(parseFloat(e.target.value)); });
 $("#wrongBar").addEventListener("click", (e) => { e.preventDefault(); $("#newBarForm").hidden = !$("#newBarForm").hidden; });
+
 $("#submitReport").addEventListener("click", async () => {
   const p = parseFloat($("#priceInput").value);
   if (!p || p <= 0 || p > 50) { toast("Ce prix me semble louche."); return; }
   const fmtVal = $("input[name=fmt]:checked")?.value || "50";
   const isHH = $("#hhField").checked;
-  const b = BARS.find(x => x.id === state.selectedBarId) || BARS[0];
+  const newBarName = $("#newBarName").value.trim();
+  const newBarAddr = $("#newBarAddr").value.trim();
+
+  let bar = BARS.find(x => x.id === state.selectedBarId);
+  let createdNewBar = false;
+
+  // Si l'utilisateur a renseigné un nouveau bar, on l'insère d'abord
+  if (!$("#newBarForm").hidden && newBarName) {
+    const { data: ins, error: insErr } = await sb.from('bars').insert({
+      name: newBarName,
+      address: newBarAddr || "Annecy",
+      lat: 45.8992, lng: 6.1294,
+      pint_normal: p,
+      has_non_alc: false,
+    }).select().single();
+    if (insErr) { toast("Erreur sur l'ajout du bar."); console.error(insErr); return; }
+    bar = mapBarFromDb(ins);
+    BARS.push(bar);
+    createdNewBar = true;
+  }
+
+  if (!bar) { toast("Choisis un bar d'abord."); return; }
+
+  const btn = $("#submitReport");
+  btn.disabled = true; btn.textContent = "Envoi…";
 
   const { error } = await sb.from('reports').insert({
-    bar_id: b.id, price: p, format: parseInt(fmtVal),
+    bar_id: bar.id, price: p, format: parseInt(fmtVal),
     is_hh: isHH, device_id: state.device, status: 'pending',
   });
+
+  btn.disabled = false; btn.textContent = "Envoyer";
+
   if (error) { toast("Erreur réseau. Réessaie."); console.error(error); return; }
 
   state.reports++;
-  localStorage.setItem(LS.reports, String(state.reports));
-  const old = b.pintNormal;
-  const upd = +(((old * 4) + p) / 5).toFixed(2);
+  const old = bar.pintNormal;
+  const previewAvg = +(((old * 4) + p) / 5).toFixed(2);
   $("#effectFrom").textContent = eur(old);
-  $("#effectTo").textContent = eur(upd);
-  $("#effectBar").textContent = `au ${b.name}`;
-  $("#confirmQuote").textContent = p >= 8 ? "Courageux d'avouer ça. Bien." : p <= 5 ? "Solidarité. L'index te remercie." : "L'indice vient de gagner un peu en précision.";
+  $("#effectTo").textContent = eur(previewAvg);
+  $("#effectBar").textContent = `au ${bar.name}`;
+  $("#confirmQuote").textContent = createdNewBar
+    ? "Nouveau bar ajouté. Merci."
+    : p >= 8 ? "Courageux d'avouer ça. Bien."
+    : p <= 5 ? "Solidarité. L'index te remercie."
+    : "L'indice vient de gagner un peu en précision.";
   closeReport();
   $("#confirm").hidden = false;
-  b.pintNormal = upd;
-  renderTopChip(); renderPins(); renderProfile();
+  renderProfile();
+  if (createdNewBar) renderPins();
 });
 
 // ============== LANDING ==============
 function renderLanding() {
-  const top3 = BARS.filter(b => b.hasNonAlc).sort((a,b) => a.nonAlcPrice - b.nonAlcPrice).slice(0,3);
+  const nonAlc = BARS.filter(b => b.hasNonAlc);
+  const top3 = [...nonAlc].sort((a,b) => a.nonAlcPrice - b.nonAlcPrice).slice(0,3);
+  $("#landingEyebrow").textContent = `/ sans alcool · ${nonAlc.length}`;
   $("#landingRows").innerHTML = top3.map((b,i) =>
     `<button class="list-row" data-bar-id="${b.id}" style="border-color:var(--line-soft)">
       <span class="list-row__rank">${String(i+1).padStart(2,"0")}</span>
-      <div class="list-row__main"><div class="list-row__name">${b.name}</div><div class="list-row__meta"><span>${b.address}</span><span>0,0 %</span></div></div>
+      <div class="list-row__main">
+        <div class="list-row__name">${escapeHtml(b.name)}</div>
+        <div class="list-row__meta"><span>${escapeHtml(b.address)}</span><span>0,0 %</span></div>
+      </div>
       <span class="list-row__price" style="color:var(--moss)">${eur(b.nonAlcPrice)}</span>
     </button>`
   ).join("");
@@ -343,21 +419,27 @@ $("#admEnter").addEventListener("click", () => {
 $("#admPwd").addEventListener("keypress", (e) => { if (e.key === "Enter") $("#admEnter").click(); });
 
 async function renderAdmin() {
-  const { data: pending } = await sb.from('reports')
+  const { data: pending, error } = await sb.from('reports')
     .select('*, bars(name)').eq('status', 'pending').order('created_at', { ascending: false });
+
+  if (error) { toast("Erreur admin"); console.error(error); return; }
+
   const reports = pending || [];
   $("#admStatSignals").textContent = reports.length;
   $("#admStatBars").textContent = BARS.length;
   $("#admPendCount").textContent = reports.length;
   $("#admBarCount").textContent = 0;
+
   if (reports.length > 0) {
     const now = Date.now();
     const avgMs = reports.reduce((s, r) => s + (now - new Date(r.created_at).getTime()), 0) / reports.length;
-    const avgH = avgMs / 3600000;
-    $("#admStatDelay").textContent = avgH < 1 ? `${Math.round(avgMs/60000)} min` : `${avgH.toFixed(1)}h`;
+    $("#admStatDelay").textContent = avgMs < 3600000
+      ? `${Math.round(avgMs/60000)} min`
+      : `${(avgMs/3600000).toFixed(1)}h`;
   } else {
     $("#admStatDelay").textContent = "—";
   }
+
   $("#admBars").innerHTML = `<p style="font-family:var(--mono);font-size:11px;color:#8a8275;">Aucun nouveau bar en attente.</p>`;
   $("#admPending").innerHTML = reports.length === 0
     ? `<p style="font-family:var(--mono);font-size:11px;color:#8a8275;">Aucun signalement en attente.</p>`
@@ -365,8 +447,11 @@ async function renderAdmin() {
         const barName = r.bars?.name || "—";
         const flag = r.price >= 9 || r.price <= 4 ? `<b>· ⚑ aberrant</b>` : "";
         const ts = new Date(r.created_at).toLocaleString('fr-FR', { hour:'2-digit', minute:'2-digit', day:'2-digit', month:'2-digit' });
-        return `<div class="admin-row" data-rep="${r.id}" data-bar="${r.bar_id}" data-price="${r.price}">
-          <div><div class="admin-row__bar">${barName}</div><div class="admin-row__meta">${eur(r.price)} · ${r.format}cl ${r.is_hh?"· HH":""} · ${ts} · ${r.device_id} ${flag}</div></div>
+        return `<div class="admin-row" data-rep="${r.id}" data-bar="${r.bar_id}">
+          <div>
+            <div class="admin-row__bar">${escapeHtml(barName)}</div>
+            <div class="admin-row__meta">${eur(r.price)} · ${r.format}cl ${r.is_hh?"· HH":""} · ${ts} · ${escapeHtml(r.device_id || "—")} ${flag}</div>
+          </div>
           <div class="admin-row__actions">
             <button class="admin-btn admin-btn--ok" data-action="approve">Valider</button>
             <button class="admin-btn admin-btn--no" data-action="reject">Rejeter</button>
@@ -380,6 +465,8 @@ async function renderAdmin() {
       const repId = row.dataset.rep;
       const barId = +row.dataset.bar;
       const action = e.currentTarget.dataset.action;
+      row.querySelectorAll(".admin-btn").forEach(b => b.disabled = true);
+
       if (action === "approve") {
         await sb.from('reports').update({ status: 'approved' }).eq('id', repId);
         const { data: approved } = await sb.from('reports')
@@ -387,9 +474,13 @@ async function renderAdmin() {
           .order('created_at', { ascending: false }).limit(5);
         if (approved?.length) {
           const avg = approved.reduce((s, r) => s + r.price, 0) / approved.length;
-          await sb.from('bars').update({ pint_normal: +avg.toFixed(2), last_update: new Date().toISOString().slice(0,10) }).eq('id', barId);
+          await sb.from('bars').update({
+            pint_normal: +avg.toFixed(2),
+            last_update: new Date().toISOString().slice(0,10),
+          }).eq('id', barId);
           const bar = BARS.find(b => b.id === barId);
-          if (bar) { bar.pintNormal = +avg.toFixed(2); renderTopChip(); renderPins(); }
+          if (bar) { bar.pintNormal = +avg.toFixed(2); bar.lastUpdate = new Date().toISOString().slice(0,10); }
+          renderTopChip(); renderPins();
         }
       } else {
         await sb.from('reports').update({ status: 'rejected' }).eq('id', repId);
@@ -406,14 +497,18 @@ function renderProfile() {
   $("#reportsCount").textContent = state.reports;
   $("#favsCount").textContent = state.favs.length;
   $("#profileNick").textContent = state.nick || "l'inconnu";
-  $("#nickInput").value = state.nick;
+  if ($("#nickInput").value !== state.nick) $("#nickInput").value = state.nick;
   $("#prefModeVal").textContent = state.mode === "nonalc" ? "Pintes sans alcool" : "Pintes alcoolisées";
   if (state.favs.length === 0) {
     $("#favsList").innerHTML = `<p class="fav-empty">Aucun pour l'instant. Tape sur le ❤ d'un bar.</p>`;
   } else {
     $("#favsList").innerHTML = state.favs.map(id => {
       const b = BARS.find(x => x.id === id); if (!b) return "";
-      return `<div class="fav-row"><span class="fav-row__name">${b.name}</span><span class="fav-row__price">${eur(b.pintNormal)}</span><button class="fav-row__rm" data-rm-fav="${b.id}">✕</button></div>`;
+      return `<div class="fav-row">
+        <span class="fav-row__name">${escapeHtml(b.name)}</span>
+        <span class="fav-row__price">${eur(b.pintNormal)}</span>
+        <button class="fav-row__rm" data-rm-fav="${b.id}" aria-label="Retirer">✕</button>
+      </div>`;
     }).join("");
     $$("[data-rm-fav]").forEach(x => x.addEventListener("click", () => {
       state.favs = state.favs.filter(z => z !== +x.dataset.rmFav);
@@ -434,12 +529,13 @@ $("#prefMode").addEventListener("click", () => {
   toast(state.mode === "nonalc" ? "OK. Mode 0,0 % par défaut." : "Mode pinte alcoolisée par défaut.");
 });
 $("#prefRedo").addEventListener("click", () => { localStorage.removeItem(LS.introDone); $("#onb").hidden = false; });
-$("#prefLanding").addEventListener("click", () => { setTab("liste"); $("#landing").hidden = false; });
+$("#prefLanding").addEventListener("click", () => { $("#landing").hidden = false; });
 $("#prefAdmin").addEventListener("click", () => openAdmin());
 
 // ============== INIT ==============
 async function init() {
-  await fetchBars();
+  const ok = await fetchBars();
+  await fetchMyReportCount();
   const h = location.hash.replace("#","");
   if (h === "admin") openAdmin();
   else if (h === "sans-alcool" || h === "landing") { $("#landing").hidden = false; }
@@ -447,6 +543,7 @@ async function init() {
   else setTab("carte");
   if (!localStorage.getItem(LS.introDone) && !h) { $("#onb").hidden = false; }
   renderTopChip(); renderProfile(); renderLanding(); updateChips(); initMap();
+  if (!ok) toast("Données indisponibles. Réessaie plus tard.");
 }
 document.addEventListener("DOMContentLoaded", init);
 window.addEventListener("hashchange", () => {
