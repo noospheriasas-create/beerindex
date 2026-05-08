@@ -21,7 +21,7 @@
   --tabbar-h: 64px;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin:0; padding:0; height:100%; }
+html, body { margin:0; padding:0; height:100%; width:100%; overflow-x:hidden; }
 body {
   font-family: var(--sans); font-size: 15px; line-height: 1.45;
   color: var(--ink); background: #181613;
