@@ -33,14 +33,15 @@ const tier = (price) => {
   return            { c:"#8B2D1A", k:"rip",   label:"chacal" };
 };
 const parseHM = (s) => { const [h,m] = s.split(":").map(Number); return h*60 + m; };
+const nowMins = () => { const d = new Date(); return d.getHours()*60 + d.getMinutes(); };
 const isHHActive = (b) => {
   if (!b.hhStart || !b.hhEnd) return false;
-  const n = 18*60 + 30;
+  const n = nowMins();
   return n >= parseHM(b.hhStart) && n < parseHM(b.hhEnd);
 };
 const minsHH = (b) => {
   if (!b.hhStart) return null;
-  const n = 18*60 + 30;
+  const n = nowMins();
   if (n >= parseHM(b.hhStart) && n < parseHM(b.hhEnd)) return { active:true, end: parseHM(b.hhEnd) - n };
   if (n < parseHM(b.hhStart)) return { active:false, start: parseHM(b.hhStart) - n };
   return null;
@@ -75,9 +76,9 @@ async function fetchBars() {
 
 function computeIndex() {
   const list = state.mode === "nonalc" ? BARS.filter(b => b.hasNonAlc).map(b => b.nonAlcPrice) : BARS.map(b => b.pintNormal);
-  if (!list.length) return { today: 0, yesterday: 0, delta: 0 };
+  if (!list.length) return { today: 0, delta: 0 };
   const avg = list.reduce((a,b)=>a+b,0) / list.length;
-  return { today: avg, yesterday: avg + 0.12, delta: avg - (avg + 0.12) };
+  return { today: avg, delta: 0 };
 }
 
 // ============== TABS ==============
@@ -118,9 +119,8 @@ function closeOnb() { $("#onb").hidden = true; localStorage.setItem(LS.introDone
 function renderTopChip() {
   const i = computeIndex();
   $("#idxChipPrice").textContent = eur(i.today);
-  const up = i.delta > 0;
-  $("#idxChipDelta").textContent = `${up?"▲":"▼"} ${fmt(Math.abs(i.delta))}`;
-  $("#idxChipDelta").className = `pct ${up?"up":"down"}`;
+  $("#idxChipDelta").textContent = "moyenne";
+  $("#idxChipDelta").className = "pct";
 }
 
 // ============== MAP ==============
@@ -350,6 +350,14 @@ async function renderAdmin() {
   $("#admStatBars").textContent = BARS.length;
   $("#admPendCount").textContent = reports.length;
   $("#admBarCount").textContent = 0;
+  if (reports.length > 0) {
+    const now = Date.now();
+    const avgMs = reports.reduce((s, r) => s + (now - new Date(r.created_at).getTime()), 0) / reports.length;
+    const avgH = avgMs / 3600000;
+    $("#admStatDelay").textContent = avgH < 1 ? `${Math.round(avgMs/60000)} min` : `${avgH.toFixed(1)}h`;
+  } else {
+    $("#admStatDelay").textContent = "—";
+  }
   $("#admBars").innerHTML = `<p style="font-family:var(--mono);font-size:11px;color:#8a8275;">Aucun nouveau bar en attente.</p>`;
   $("#admPending").innerHTML = reports.length === 0
     ? `<p style="font-family:var(--mono);font-size:11px;color:#8a8275;">Aucun signalement en attente.</p>`
