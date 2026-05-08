@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Annecy Beer Index — la pinte la moins chère</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,400..600,0..100,0..1;1,9..144,400..600,0..100,0..1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div class="phone" id="phone">
+
+    <!-- ONBOARDING — 1 écran -->
+    <section class="onb" id="onb" data-screen-label="01 Onboarding" hidden>
+      <div class="onb__top">
+        <div class="brand">
+          <div class="brand__mark"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5h10l-1 14a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2Z"/><path d="M7 10h10" opacity=".7"/></svg></div>
+          <span class="brand__name"><b>Annecy</b> Beer Index</span>
+        </div>
+        <button class="eyebrow" data-onb-skip>Passer →</button>
+      </div>
+      <div class="onb__hero">
+        <h1 class="h-display onb__title">La pinte<br/>la moins<br/><em>chère</em>.</h1>
+        <p class="onb__sub">Une carte. Des prix. Mise à jour <b>par les gens d'ici</b>, pour les gens d'ici. Pas de compte, pas de pub, pas de chichi.</p>
+        <div class="onb__modes">
+          <button class="onb__mode" data-mode="alc">
+            <span class="glyph">🍺</span>
+            <b>Avec alcool</b>
+            <em>la pinte classique</em>
+          </button>
+          <button class="onb__mode" data-mode="nonalc">
+            <span class="glyph">🥤</span>
+            <b>Sans alcool</b>
+            <em>les 0,0 % aussi</em>
+          </button>
+        </div>
+      </div>
+      <div class="onb__foot">
+        <span>v0.1 · fait à Annecy</span>
+        <a href="#" data-onb-skip>plus tard →</a>
+      </div>
+    </section>
+
+    <!-- TOP -->
+    <header class="app-top" id="appTop">
+      <div class="brand">
+        <div class="brand__mark"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5h10l-1 14a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2Z"/><path d="M7 10h10" opacity=".7"/></svg></div>
+        <span class="brand__name"><b>Annecy</b> Beer Index</span>
+      </div>
+      <div class="idx-chip">
+        <span class="num" id="idxChipPrice">€6,84</span>
+        <span class="pct up" id="idxChipDelta">▲ 0,12</span>
+      </div>
+    </header>
+
+    <!-- CARTE -->
+    <section class="screen screen-map" data-tab="carte" data-screen-label="02 Carte">
+      <div class="map-top">
+        <button class="chip is-active" id="modeAlcChip">🍺 Alcool</button>
+        <button class="chip" id="modeNonChip">🥤 Sans alcool</button>
+        <button class="chip" id="hhChip"><span class="dot"></span>Happy hour</button>
+      </div>
+      <div id="mapEl"></div>
+      <div class="map-empty" id="mapEmpty" hidden>
+        <p>Aucun bar ne passe le filtre. Élargis tes critères, sale exigeant.</p>
+      </div>
+      <button class="map-fab" id="mapFab">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Signaler un prix
+      </button>
+    </section>
+
+    <!-- LISTE -->
+    <section class="screen list" data-tab="liste" data-screen-label="03 Liste" hidden>
+      <div class="list-head">
+        <div class="eyebrow">— vendredi 8 mai · annecy</div>
+        <h1 class="h-display">La <em>liste</em>.</h1>
+        <p class="list-head__sub">Tous les bars classés du moins cher au plus chacal. <b id="listMode">Pinte alcoolisée</b>.</p>
+      </div>
+      <div class="list-stats">
+        <span><b id="listAvg">€6,84</b> moyenne</span>
+        <span><b id="listMin">€5,50</b> min</span>
+        <span><b id="listMax">€9,00</b> max</span>
+        <span><b id="listCount">10</b> bars</span>
+      </div>
+      <div class="list-toggle">
+        <button class="chip is-active" data-sort="price">par prix ↓</button>
+        <button class="chip" data-sort="name">A → Z</button>
+        <button class="chip" data-sort="hh">happy hour</button>
+      </div>
+      <div id="listRows"></div>
+    </section>
+
+    <!-- MOI -->
+    <section class="screen profile" data-tab="moi" data-screen-label="04 Moi" hidden>
+      <div class="profile-head">
+        <div class="eyebrow">— ton profil de poivreau anonyme</div>
+        <h1 class="h-display">Salut, <em id="profileNick">l'inconnu</em>.</h1>
+        <p>Tes contributions à l'index, sans compte ni mouchard.</p>
+      </div>
+      <input class="nick-input" id="nickInput" placeholder="ton blaze (facultatif)" maxlength="22" style="margin-top:18px"/>
+      <div class="profile-stats">
+        <div>
+          <div class="profile-stat__lbl">Signalements</div>
+          <div class="profile-stat__val terra" id="reportsCount">0</div>
+        </div>
+        <div>
+          <div class="profile-stat__lbl">Bars favoris</div>
+          <div class="profile-stat__val" id="favsCount">0</div>
+        </div>
+      </div>
+      <div class="profile-section">
+        <h3>Tes bars favoris</h3>
+        <div id="favsList"><p class="fav-empty">Aucun pour l'instant. Tape sur le ❤ d'un bar.</p></div>
+      </div>
+      <div class="profile-section">
+        <h3>Préférences</h3>
+        <button class="pref-row" id="prefMode">
+          <span><span class="pref-row__lbl">Mode par défaut</span><span class="pref-row__sub" id="prefModeVal">Pintes alcoolisées</span></span>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <button class="pref-row" id="prefRedo">
+          <span><span class="pref-row__lbl">Refaire l'intro</span><span class="pref-row__sub">Au cas où.</span></span>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+        </button>
+        <button class="pref-row" id="prefLanding">
+          <span><span class="pref-row__lbl">Page sans-alcool</span><span class="pref-row__sub">/sans-alcool</span></span>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <button class="pref-row" id="prefAdmin">
+          <span><span class="pref-row__lbl">Admin · /admin</span><span class="pref-row__sub">accès fondateurs · mdp&nbsp;: <span class="num">annecy</span></span></span>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+      </div>
+      <p class="profile-foot">v0.1 · fait à Annecy par 3 potes ·<br/>pas d'analytique, pas de cookies, juste un fichier <a href="#">JSON</a> et <span style="color: var(--terra)">de l'amour</span>.</p>
+    </section>
+
+    <!-- LANDING -->
+    <section class="landing" id="landing" data-screen-label="05 /sans-alcool" hidden>
+      <div class="landing__top">
+        <div class="brand">
+          <div class="brand__mark" style="background: var(--moss)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M9 4h6l-1 16a2 2 0 0 1-2 2h-0a2 2 0 0 1-2-2Z"/></svg></div>
+          <span class="brand__name"><b>Annecy</b> Beer Index</span>
+        </div>
+        <button class="icon-btn" data-go-tab="carte" aria-label="Fermer">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="landing__main">
+        <span class="landing__eyebrow">/ sans alcool · 74</span>
+        <h1 class="h-display">Les meilleures <em>0,0%</em> d'Annecy.</h1>
+        <p class="landing__sub">(Et accessoirement, on sait aussi où ta vraie pinte coûte 5 €.)</p>
+        <div class="landing__top3-head">
+          <span class="rank">TOP 3</span>
+          <span>la 0,0 % la moins chère du moment</span>
+        </div>
+        <div id="landingRows"></div>
+        <button class="btn btn--primary btn--xl landing__cta" data-go-tab="carte">Voir la carte complète →</button>
+        <p class="landing__quote">« Une 0,0 % à 5 €, c'est plus une défaite morale. C'est une stratégie. »</p>
+        <p class="landing__foot">Fait en 1 journée à 3, à Annecy.<br/>Pas d'app. Pas de compte. Pas de pub. Juste de la bière.</p>
+      </div>
+    </section>
+
+    <!-- BAR DETAIL SHEET -->
+    <div class="sheet-wrap" id="sheetWrap" hidden>
+      <div class="sheet-scrim" data-close-sheet></div>
+      <aside class="sheet" id="sheet" role="dialog" aria-label="Détail bar">
+        <button class="sheet__handle" data-close-sheet aria-label="Fermer"></button>
+        <div class="sheet-body" id="sheetBody"></div>
+      </aside>
+    </div>
+
+    <!-- REPORT MODAL -->
+    <section class="modal-right" id="reportModal" aria-label="Signaler un prix" hidden>
+      <header class="mr-top">
+        <button class="icon-btn" data-close-report aria-label="Fermer"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+        <div class="mr-top__lbl">étape 1 / 1</div>
+        <div style="width:38px"></div>
+      </header>
+      <div class="mr-body">
+        <h2>Combien tu l'as <em>payée</em> ?</h2>
+        <p class="mr-at">au <b id="mrBarName">bar</b></p>
+        <a href="#" class="wrong-bar" id="wrongBar">Pas le bon bar ? Ajouter →</a>
+        <div class="new-bar-form" id="newBarForm" hidden>
+          <input id="newBarName" placeholder="nom du bar" />
+          <input id="newBarAddr" placeholder="adresse / quartier" />
+        </div>
+        <label class="field">
+          <span class="field__lbl">Prix</span>
+          <div class="price-input">
+            <input type="number" inputmode="decimal" step="0.10" placeholder="6,50" id="priceInput" />
+            <span class="cur">€</span>
+          </div>
+          <span class="field__hint">Pas de centimes ronds ? T'es plus à ça près.</span>
+        </label>
+        <fieldset class="field" style="border:0; padding:0; margin:0 0 22px;">
+          <legend class="field__lbl">Format</legend>
+          <div class="radio-row">
+            <label class="radio"><input type="radio" name="fmt" value="25"/><span><b>Galopin</b><em>25 cl</em></span></label>
+            <label class="radio"><input type="radio" name="fmt" value="33"/><span><b>Demi</b><em>33 cl</em></span></label>
+            <label class="radio"><input type="radio" name="fmt" value="50" checked/><span><b>Pinte</b><em>50 cl</em></span></label>
+          </div>
+        </fieldset>
+        <label class="toggle-row">
+          <span><b>C'était l'happy hour ?</b><em>aucune honte, c'est même la stratégie</em></span>
+          <input type="checkbox" id="hhField" class="switch"/>
+          <span class="switch-ui" aria-hidden="true"></span>
+        </label>
+        <p class="mr-quote" id="mrQuote">Dis-moi que t'as pas payé 9 €. S'il te plaît.</p>
+      </div>
+      <div class="mr-cta"><button class="btn btn--terra btn--xl" id="submitReport">Envoyer</button></div>
+    </section>
+
+    <!-- CONFIRMATION -->
+    <section class="confirm" id="confirm" data-screen-label="06 Confirmation" hidden>
+      <div class="confirm__check"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 6"/></svg></div>
+      <h1 class="h-display">Enregistré.</h1>
+      <p id="confirmQuote">L'indice vient de gagner un peu en précision. Merci.</p>
+      <div class="confirm__effect">
+        <div class="confirm__effect-lbl">moyenne du bar</div>
+        <div class="confirm__effect-row">
+          <span class="confirm__effect-from" id="effectFrom">€6,40</span>
+          <span class="confirm__effect-arrow">→</span>
+          <span class="confirm__effect-to" id="effectTo">€6,45</span>
+        </div>
+        <div class="confirm__effect-bar" id="effectBar">au bar</div>
+      </div>
+      <button class="btn btn--primary btn--xl" data-go-tab="carte">Retour à la carte</button>
+    </section>
+
+    <!-- ADMIN -->
+    <section class="admin" id="admin" data-screen-label="07 Admin" hidden>
+      <header class="admin__top">
+        <h1>// ABI<span class="dim">/</span>admin</h1>
+        <button class="admin__close" data-go-tab="carte">fermer ✕</button>
+      </header>
+      <div class="admin__body">
+        <div class="admin-stats">
+          <div class="admin-stat"><div class="admin-stat__val" id="admStatSignals">7</div><div class="admin-stat__lbl">signaux du jour</div></div>
+          <div class="admin-stat"><div class="admin-stat__val" id="admStatBars">10</div><div class="admin-stat__lbl">bars suivis</div></div>
+          <div class="admin-stat"><div class="admin-stat__val">2,4h</div><div class="admin-stat__lbl">délai moyen</div></div>
+        </div>
+        <p class="admin-quote">« Signaux en attente. Sois impitoyable. »</p>
+        <h3 class="admin-h">Prix en attente (<span id="admPendCount">5</span>)</h3>
+        <div id="admPending"></div>
+        <h3 class="admin-h">Nouveaux bars (<span id="admBarCount">2</span>)</h3>
+        <div id="admBars"></div>
+      </div>
+    </section>
+    <div class="admin-gate" id="admGate" hidden>
+      <div class="admin-gate__card">
+        <h2>// ABI/admin</h2>
+        <p>// fondateurs uniquement. mot de passe :</p>
+        <input type="password" id="admPwd" placeholder="mot de passe" />
+        <button class="btn" id="admEnter">Entrer →</button>
+        <button class="btn" style="width:100%; margin-top:8px; background:rgba(255,255,255,.05); color:#d8d2c4;" data-go-tab="carte">← Annuler</button>
+        <div class="admin-gate__hint">// indice : c'est un proto. mdp = "annecy"</div>
+      </div>
+    </div>
+
+    <!-- TAB BAR -->
+    <nav class="tabbar">
+      <button class="tab is-active" data-go-tab="carte">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/></svg>
+        <span>Carte</span>
+      </button>
+      <button class="tab" data-go-tab="liste">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        <span>Liste</span>
+      </button>
+      <button class="tab" data-go-tab="moi">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3.5"/><path d="M5 20c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg>
+        <span>Moi</span>
+      </button>
+    </nav>
+
+    <div class="toast" id="toast" hidden></div>
+  </div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="app.js"></script>
+</body>
+</html>
