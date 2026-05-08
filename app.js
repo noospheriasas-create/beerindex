@@ -1,18 +1,11 @@
 /* =========================================================
-   ABI v3 — fanzine FR · 3 onglets · simple
+   ABI v3 — fanzine FR · Supabase backend
    ========================================================= */
-const BARS = [
-  { id:1,  name:"Le Captain Pub",     address:"11 Fbg des Annonciades", lat:45.8992, lng:6.1294, pintNormal:5.50, pintHH:4.00, hhStart:"18:00", hhEnd:"20:00", lastUpdate:"2026-05-05", hasNonAlc:true,  nonAlcPrice:4.50 },
-  { id:2,  name:"Le Munich",          address:"1 Quai Perrière",        lat:45.8989, lng:6.1283, pintNormal:6.20, pintHH:5.00, hhStart:"17:00", hhEnd:"19:00", lastUpdate:"2026-05-06", hasNonAlc:true,  nonAlcPrice:5.00 },
-  { id:3,  name:"Le Pâquier Café",    address:"Av. d'Albigny",          lat:45.9024, lng:6.1349, pintNormal:9.00, pintHH:null, hhStart:null,    hhEnd:null,    lastUpdate:"2026-05-04", hasNonAlc:false },
-  { id:4,  name:"Le Verre des Alpes", address:"Rue Carnot",             lat:45.8978, lng:6.1267, pintNormal:7.50, pintHH:5.50, hhStart:"18:30", hhEnd:"20:30", lastUpdate:"2026-05-03", hasNonAlc:true,  nonAlcPrice:4.80 },
-  { id:5,  name:"Le Snug",            address:"13 Rue Grenette",        lat:45.8985, lng:6.1278, pintNormal:6.50, pintHH:4.50, hhStart:"17:30", hhEnd:"19:30", lastUpdate:"2026-05-07", hasNonAlc:false },
-  { id:6,  name:"Finn Kelly's",       address:"10 Fbg des Balmettes",   lat:45.8961, lng:6.1271, pintNormal:7.00, pintHH:5.00, hhStart:"17:00", hhEnd:"20:00", lastUpdate:"2026-05-06", hasNonAlc:true,  nonAlcPrice:5.50 },
-  { id:7,  name:"L'Esquisse",         address:"21 Rue Royale",          lat:45.8998, lng:6.1302, pintNormal:5.80, pintHH:null, hhStart:null,    hhEnd:null,    lastUpdate:"2026-05-05", hasNonAlc:false },
-  { id:8,  name:"La Verrière",        address:"Quartier des Marquisats",lat:45.8949, lng:6.1324, pintNormal:8.00, pintHH:6.50, hhStart:"18:00", hhEnd:"19:30", lastUpdate:"2026-05-07", hasNonAlc:true,  nonAlcPrice:5.50 },
-  { id:9,  name:"Le Woodstock",       address:"7 Quai Eustache Chappuis",lat:45.9003,lng:6.1311, pintNormal:6.80, pintHH:4.80, hhStart:"17:00", hhEnd:"20:00", lastUpdate:"2026-05-04", hasNonAlc:false },
-  { id:10, name:"La Coloc",           address:"Rue Sommeiller",         lat:45.8995, lng:6.1289, pintNormal:6.60, pintHH:4.50, hhStart:"18:00", hhEnd:"21:00", lastUpdate:"2026-05-06", hasNonAlc:true,  nonAlcPrice:4.50 },
-];
+const SUPABASE_URL = 'https://rjptjimynwumehytqyqn.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqcHRqaW15bnd1bWVoeXRxeXFuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMzIzMzUsImV4cCI6MjA5MzgwODMzNX0.roClkQ2E3c7iPg67DLI5q3Z8sFL2PyQoAmypeq7v_3Q';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let BARS = [];
 
 const LS = { introDone:"abi:introDone", mode:"abi:mode", reports:"abi:reports", favs:"abi:favs", nick:"abi:nick", device:"abi:device" };
 const state = {
@@ -42,7 +35,7 @@ const tier = (price) => {
 const parseHM = (s) => { const [h,m] = s.split(":").map(Number); return h*60 + m; };
 const isHHActive = (b) => {
   if (!b.hhStart || !b.hhEnd) return false;
-  const n = 18*60 + 30; // demo
+  const n = 18*60 + 30;
   return n >= parseHM(b.hhStart) && n < parseHM(b.hhEnd);
 };
 const minsHH = (b) => {
@@ -64,8 +57,25 @@ const toast = (msg, ms=2200) => {
   clearTimeout(toast._tm); toast._tm = setTimeout(() => t.hidden = true, ms);
 };
 
+function mapBarFromDb(b) {
+  return {
+    id: b.id, name: b.name, address: b.address, lat: b.lat, lng: b.lng,
+    pintNormal: b.pint_normal, pintHH: b.pint_hh,
+    hhStart: b.hh_start, hhEnd: b.hh_end,
+    hasNonAlc: b.has_non_alc, nonAlcPrice: b.non_alc_price,
+    lastUpdate: b.last_update,
+  };
+}
+
+async function fetchBars() {
+  const { data, error } = await sb.from('bars').select('*').order('id');
+  if (error) { console.error('Supabase fetch error:', error); return; }
+  BARS = data.map(mapBarFromDb);
+}
+
 function computeIndex() {
   const list = state.mode === "nonalc" ? BARS.filter(b => b.hasNonAlc).map(b => b.nonAlcPrice) : BARS.map(b => b.pintNormal);
+  if (!list.length) return { today: 0, yesterday: 0, delta: 0 };
   const avg = list.reduce((a,b)=>a+b,0) / list.length;
   return { today: avg, yesterday: avg + 0.12, delta: avg - (avg + 0.12) };
 }
@@ -177,18 +187,12 @@ function openSheet(id) {
   $("#sheetBody").innerHTML = `
     <div class="bar-head">
       <div class="bar-head__row">
-        <div style="flex:1;min-width:0">
-          <h2>${b.name}</h2>
-          <div class="bar-head__addr">${b.address} · ~${(Math.random()*0.6+0.2).toFixed(1)} km</div>
-        </div>
+        <div style="flex:1;min-width:0"><h2>${b.name}</h2><div class="bar-head__addr">${b.address} · ~${(Math.random()*0.6+0.2).toFixed(1)} km</div></div>
         <button class="bar-fav ${isFav?"is-on":""}" id="favBtn"><svg viewBox="0 0 24 24" width="18" height="18" fill="${isFav?"currentColor":"none"}" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6c-2.5 4.5-9.5 9-9.5 9Z"/></svg></button>
       </div>
     </div>
     <div class="price-row">
-      <div>
-        <div class="price-row__label">${state.mode === "nonalc" ? "Pinte 0,0 %" : "Pinte (50 cl)"}</div>
-        <div class="price-row__val"><span class="cur">€</span>${fmt(price)}</div>
-      </div>
+      <div><div class="price-row__label">${state.mode === "nonalc" ? "Pinte 0,0 %" : "Pinte (50 cl)"}</div><div class="price-row__val"><span class="cur">€</span>${fmt(price)}</div></div>
       <span class="price-row__tier t-${t.k}">${t.label}</span>
     </div>
     <div class="price-update">Mis à jour ${ago} · par un contributeur anonyme</div>
@@ -218,8 +222,8 @@ function renderList() {
   const bars = visibleBars();
   const prices = bars.map(b => priceFor(b));
   $("#listAvg").textContent = eur(idx.today);
-  $("#listMin").textContent = eur(Math.min(...prices));
-  $("#listMax").textContent = eur(Math.max(...prices));
+  $("#listMin").textContent = prices.length ? eur(Math.min(...prices)) : "—";
+  $("#listMax").textContent = prices.length ? eur(Math.max(...prices)) : "—";
   $("#listCount").textContent = bars.length;
   $("#listMode").textContent = state.mode === "nonalc" ? "Pinte sans alcool" : "Pinte alcoolisée";
 
@@ -229,19 +233,13 @@ function renderList() {
   if (state.sort === "hh") sorted.sort((a,b) => (b.pintHH ? 1 : 0) - (a.pintHH ? 1 : 0) || priceFor(a)-priceFor(b));
 
   $("#listRows").innerHTML = sorted.map((b,i) => {
-    const p = priceFor(b);
-    const t = tier(p);
+    const p = priceFor(b); const t = tier(p);
     const hh = b.pintHH ? `<span class="hh">HH ${eur(b.pintHH)}</span>` : "";
-    return `
-      <button class="list-row" data-bar-id="${b.id}">
-        <span class="list-row__rank">${String(i+1).padStart(2,"0")}</span>
-        <div class="list-row__main">
-          <div class="list-row__name">${b.name}</div>
-          <div class="list-row__meta"><span>${b.address}</span>${hh ? `<span>${hh}</span>` : ""}</div>
-        </div>
-        <span class="list-row__price t-${t.k}">${eur(p)}</span>
-      </button>
-    `;
+    return `<button class="list-row" data-bar-id="${b.id}">
+      <span class="list-row__rank">${String(i+1).padStart(2,"0")}</span>
+      <div class="list-row__main"><div class="list-row__name">${b.name}</div><div class="list-row__meta"><span>${b.address}</span>${hh?`<span>${hh}</span>`:""}</div></div>
+      <span class="list-row__price t-${t.k}">${eur(p)}</span>
+    </button>`;
   }).join("");
 }
 $$("[data-sort]").forEach(b => b.addEventListener("click", () => {
@@ -249,7 +247,6 @@ $$("[data-sort]").forEach(b => b.addEventListener("click", () => {
   $$("[data-sort]").forEach(x => x.classList.toggle("is-active", x === b));
   renderList();
 }));
-
 document.addEventListener("click", (e) => {
   const btn = e.target.closest("[data-bar-id]");
   if (!btn) return;
@@ -289,12 +286,21 @@ function closeReport() {
 $$("[data-close-report]").forEach(b => b.addEventListener("click", closeReport));
 $("#priceInput").addEventListener("input", (e) => { $("#mrQuote").textContent = pickQuote(parseFloat(e.target.value)); });
 $("#wrongBar").addEventListener("click", (e) => { e.preventDefault(); $("#newBarForm").hidden = !$("#newBarForm").hidden; });
-$("#submitReport").addEventListener("click", () => {
+$("#submitReport").addEventListener("click", async () => {
   const p = parseFloat($("#priceInput").value);
   if (!p || p <= 0 || p > 50) { toast("Ce prix me semble louche."); return; }
+  const fmtVal = $("input[name=fmt]:checked")?.value || "50";
+  const isHH = $("#hhField").checked;
+  const b = BARS.find(x => x.id === state.selectedBarId) || BARS[0];
+
+  const { error } = await sb.from('reports').insert({
+    bar_id: b.id, price: p, format: parseInt(fmtVal),
+    is_hh: isHH, device_id: state.device, status: 'pending',
+  });
+  if (error) { toast("Erreur réseau. Réessaie."); console.error(error); return; }
+
   state.reports++;
   localStorage.setItem(LS.reports, String(state.reports));
-  const b = BARS.find(x => x.id === state.selectedBarId) || BARS[0];
   const old = b.pintNormal;
   const upd = +(((old * 4) + p) / 5).toFixed(2);
   $("#effectFrom").textContent = eur(old);
@@ -310,19 +316,13 @@ $("#submitReport").addEventListener("click", () => {
 // ============== LANDING ==============
 function renderLanding() {
   const top3 = BARS.filter(b => b.hasNonAlc).sort((a,b) => a.nonAlcPrice - b.nonAlcPrice).slice(0,3);
-  $("#landingRows").innerHTML = top3.map((b,i) => {
-    const t = tier(b.nonAlcPrice);
-    return `
-      <button class="list-row" data-bar-id="${b.id}" style="border-color:var(--line-soft)">
-        <span class="list-row__rank">${String(i+1).padStart(2,"0")}</span>
-        <div class="list-row__main">
-          <div class="list-row__name">${b.name}</div>
-          <div class="list-row__meta"><span>${b.address}</span><span>0,0 %</span></div>
-        </div>
-        <span class="list-row__price" style="color: var(--moss)">${eur(b.nonAlcPrice)}</span>
-      </button>
-    `;
-  }).join("");
+  $("#landingRows").innerHTML = top3.map((b,i) =>
+    `<button class="list-row" data-bar-id="${b.id}" style="border-color:var(--line-soft)">
+      <span class="list-row__rank">${String(i+1).padStart(2,"0")}</span>
+      <div class="list-row__main"><div class="list-row__name">${b.name}</div><div class="list-row__meta"><span>${b.address}</span><span>0,0 %</span></div></div>
+      <span class="list-row__price" style="color:var(--moss)">${eur(b.nonAlcPrice)}</span>
+    </button>`
+  ).join("");
 }
 
 // ============== ADMIN ==============
@@ -341,34 +341,56 @@ $("#admEnter").addEventListener("click", () => {
   } else { toast("Nope."); }
 });
 $("#admPwd").addEventListener("keypress", (e) => { if (e.key === "Enter") $("#admEnter").click(); });
-const PEND = [
-  { id:"r1", barId:1, price:5.20, fmt:"50", hh:false, ts:"il y a 2 min",  device:"abi-7f3a" },
-  { id:"r2", barId:8, price:8.50, fmt:"50", hh:false, ts:"il y a 14 min", device:"abi-9k2c" },
-  { id:"r3", barId:5, price:4.50, fmt:"50", hh:true,  ts:"il y a 38 min", device:"abi-1b9e" },
-  { id:"r4", barId:3, price:9.50, fmt:"50", hh:false, ts:"il y a 1 h",    device:"abi-aa11" },
-  { id:"r5", barId:10,price:6.50, fmt:"33", hh:false, ts:"il y a 2 h",    device:"abi-cc44" },
-];
-const NEWBARS = [
-  { id:"b1", name:"Le Cantal",  address:"Rue Vaugelas, Annecy", ts:"il y a 22 min", device:"abi-x1" },
-  { id:"b2", name:"L'Éternel", address:"Bd Taine, Annecy",     ts:"il y a 1 h",    device:"abi-x2" },
-];
-function renderAdmin() {
-  $("#admStatSignals").textContent = PEND.length + state.reports;
+
+async function renderAdmin() {
+  const { data: pending } = await sb.from('reports')
+    .select('*, bars(name)').eq('status', 'pending').order('created_at', { ascending: false });
+  const reports = pending || [];
+  $("#admStatSignals").textContent = reports.length;
   $("#admStatBars").textContent = BARS.length;
-  $("#admPendCount").textContent = PEND.length;
-  $("#admBarCount").textContent = NEWBARS.length;
-  $("#admPending").innerHTML = PEND.map(r => {
-    const b = BARS.find(x => x.id === r.barId);
-    const flag = r.price >= 9 || r.price <= 4 ? `<b>· ⚑ aberrant</b>` : "";
-    return `<div class="admin-row" data-rep="${r.id}"><div><div class="admin-row__bar">${b?.name||"—"}</div><div class="admin-row__meta">${eur(r.price)} · ${r.fmt}cl ${r.hh?"· HH":""} · ${r.ts} · ${r.device} ${flag}</div></div><div class="admin-row__actions"><button class="admin-btn admin-btn--ok">Valider</button><button class="admin-btn admin-btn--no">Rejeter</button></div></div>`;
-  }).join("");
-  $("#admBars").innerHTML = NEWBARS.map(b => `<div class="admin-row"><div><div class="admin-row__bar">${b.name}</div><div class="admin-row__meta">${b.address} · ${b.ts} · ${b.device}</div></div><div class="admin-row__actions"><button class="admin-btn admin-btn--ok">Approuver</button><button class="admin-btn admin-btn--no">Rejeter</button></div></div>`).join("");
-  $$("#admPending .admin-btn, #admBars .admin-btn").forEach(b => b.addEventListener("click", (e) => {
-    const row = e.currentTarget.closest(".admin-row");
-    row.style.transition = "opacity .25s, transform .25s";
-    row.style.opacity = "0"; row.style.transform = "translateX(40px)";
-    setTimeout(() => row.remove(), 260);
-  }));
+  $("#admPendCount").textContent = reports.length;
+  $("#admBarCount").textContent = 0;
+  $("#admBars").innerHTML = `<p style="font-family:var(--mono);font-size:11px;color:#8a8275;">Aucun nouveau bar en attente.</p>`;
+  $("#admPending").innerHTML = reports.length === 0
+    ? `<p style="font-family:var(--mono);font-size:11px;color:#8a8275;">Aucun signalement en attente.</p>`
+    : reports.map(r => {
+        const barName = r.bars?.name || "—";
+        const flag = r.price >= 9 || r.price <= 4 ? `<b>· ⚑ aberrant</b>` : "";
+        const ts = new Date(r.created_at).toLocaleString('fr-FR', { hour:'2-digit', minute:'2-digit', day:'2-digit', month:'2-digit' });
+        return `<div class="admin-row" data-rep="${r.id}" data-bar="${r.bar_id}" data-price="${r.price}">
+          <div><div class="admin-row__bar">${barName}</div><div class="admin-row__meta">${eur(r.price)} · ${r.format}cl ${r.is_hh?"· HH":""} · ${ts} · ${r.device_id} ${flag}</div></div>
+          <div class="admin-row__actions">
+            <button class="admin-btn admin-btn--ok" data-action="approve">Valider</button>
+            <button class="admin-btn admin-btn--no" data-action="reject">Rejeter</button>
+          </div>
+        </div>`;
+      }).join("");
+
+  $$("#admPending .admin-btn").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      const row = e.currentTarget.closest(".admin-row");
+      const repId = row.dataset.rep;
+      const barId = +row.dataset.bar;
+      const action = e.currentTarget.dataset.action;
+      if (action === "approve") {
+        await sb.from('reports').update({ status: 'approved' }).eq('id', repId);
+        const { data: approved } = await sb.from('reports')
+          .select('price').eq('bar_id', barId).eq('status', 'approved')
+          .order('created_at', { ascending: false }).limit(5);
+        if (approved?.length) {
+          const avg = approved.reduce((s, r) => s + r.price, 0) / approved.length;
+          await sb.from('bars').update({ pint_normal: +avg.toFixed(2), last_update: new Date().toISOString().slice(0,10) }).eq('id', barId);
+          const bar = BARS.find(b => b.id === barId);
+          if (bar) { bar.pintNormal = +avg.toFixed(2); renderTopChip(); renderPins(); }
+        }
+      } else {
+        await sb.from('reports').update({ status: 'rejected' }).eq('id', repId);
+      }
+      row.style.transition = "opacity .25s, transform .25s";
+      row.style.opacity = "0"; row.style.transform = "translateX(40px)";
+      setTimeout(() => row.remove(), 260);
+    });
+  });
 }
 
 // ============== PROFILE ==============
@@ -382,13 +404,11 @@ function renderProfile() {
     $("#favsList").innerHTML = `<p class="fav-empty">Aucun pour l'instant. Tape sur le ❤ d'un bar.</p>`;
   } else {
     $("#favsList").innerHTML = state.favs.map(id => {
-      const b = BARS.find(x => x.id === id);
-      if (!b) return "";
+      const b = BARS.find(x => x.id === id); if (!b) return "";
       return `<div class="fav-row"><span class="fav-row__name">${b.name}</span><span class="fav-row__price">${eur(b.pintNormal)}</span><button class="fav-row__rm" data-rm-fav="${b.id}">✕</button></div>`;
     }).join("");
     $$("[data-rm-fav]").forEach(x => x.addEventListener("click", () => {
-      const id = +x.dataset.rmFav;
-      state.favs = state.favs.filter(z => z !== id);
+      state.favs = state.favs.filter(z => z !== +x.dataset.rmFav);
       localStorage.setItem(LS.favs, JSON.stringify(state.favs));
       renderProfile();
     }));
@@ -410,7 +430,8 @@ $("#prefLanding").addEventListener("click", () => { setTab("liste"); $("#landing
 $("#prefAdmin").addEventListener("click", () => openAdmin());
 
 // ============== INIT ==============
-function init() {
+async function init() {
+  await fetchBars();
   const h = location.hash.replace("#","");
   if (h === "admin") openAdmin();
   else if (h === "sans-alcool" || h === "landing") { $("#landing").hidden = false; }
